@@ -2,7 +2,7 @@
 
 ### Official Discussion Group (Telegram): https://t.me/video2x
 
-## Download Builds
+## Download Builds (Windows)
 
 You can go to the [releases page](https://github.com/k4yt3x/video2x/releases) to download the latest builds of `Video2X`. The exe files will require no Python or Python module installation.
 
@@ -14,7 +14,7 @@ The **`light`** package provides only the most basic functions of `Video2X`. Onl
 
 Component names that are **bolded** can be automatically downloaded and configured with the `video2x_setup.py` script.
 
-1. Operating System: Windows
+1. Operating System: Windows / Linux
 2. AMD GPU / Nvidia GPU
 3. AMD GPU driver / Nvidia GPU driver / Nvidia CUDNN
 4. [**FFmpeg**](https://ffmpeg.zeranoe.com/builds/)
@@ -26,28 +26,27 @@ Component names that are **bolded** can be automatically downloaded and configur
 
 ## Recent Changes
 
+### 3.1.0 (February 26, 2020)
+
+- Removed the redundant layer of multi-threading since multi-process has to be implemented for launching Windows PE files in sub-processes
+- Added support for graceful exit upon `KeyboardInterrupt` or termination signals
+- Other minor improvements such as replacing `' '.join(execute)` with `shlex.join(execute)`
+
+### 3.0.0 (November 26, 2019)
+
+- Linux compatibility
+- Configuration file changed to YAML format
+  - You may still use a JSON-formatted config file. To do so, please specify `-c video2x.json`.
+- Other code clean-up and optimization
+
 ### 2.10.0 (August 16, 2019)
 
 - **Added support for [Anime4K](https://github.com/bloc97/Anime4K)**
 
-### 2.9.0 (July 27, 2019)
+### Setup Script 1.6.0 (November 26, 2019)
 
-- Changed file handling method from `os` to `pathlib`
-- Removed f_string dependency and support for legacy versions of Python
-- Organized file import statements
-
-### 2.8.1 (July 9, 2019)
-
-- Added automatic pixel format detection
-- Added automatic color bit depth detection
-
-### 2.8.0 (June 25, 2019)
-
-- **Added support for [waifu2x-ncnn-vulkan](https://github.com/nihui/waifu2x-ncnn-vulkan)**
-
-### Setup Script 1.5.0 (August 16, 2019)
-
-- Added automatic installation support for `Anime4K`
+- Added compatibility for new YAML configuration file
+- Added better exception handling
 
 ## Description
 
@@ -95,7 +94,7 @@ If you have any questions, first try visiting our [Q&A](https://github.com/k4yt3
 
 ### Prerequisites
 
-- **Python 3**
+- **Python 3.8**
 Download: https://www.python.org/downloads/windows/
 - **FFmpeg Windows Build**
 Download: https://ffmpeg.org/download.html
@@ -176,6 +175,14 @@ python video2x.py -i sample_input.mp4 -o sample_output.mp4 -m gpu -r 2 -d waifu2
 python video2x.py -i sample_input.mp4 -o sample_output.mp4 -m gpu -r 2 -d waifu2x_ncnn_vulkan
 ```
 
+### Anime4K
+
+Enlarge the video by 2 times using Anime4K. **Remember to install and configure [JRE 12](https://www.oracle.com/technetwork/java/javase/downloads/java-archive-javase12-5440181.html) path in the configuration file.**
+
+```shell
+python video2x.py -i sample_input.mp4 -o sample_output.mp4 -r 2 -d anime4k
+```
+
 ### CPU
 
 Enlarge the video to 1920x1080 using the CPU. You may also use the `-r/--ratio` option. **waifu2x-based upscalers potentially run much slower than using a GPU, but Anime4K is more CPU-dependant**. The configuration file for this method is similar to the previous methods.
@@ -241,7 +248,7 @@ https://www.gnu.org/licenses/gpl-3.0.txt
 
 ![GPLv3 Icon](https://www.gnu.org/graphics/gplv3-127x51.png)
 
-(C) 2018-2019 K4YT3X
+(C) 2018-2020 K4YT3X
 
 ## Credits
 

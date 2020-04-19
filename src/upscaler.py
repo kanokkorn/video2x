@@ -4,14 +4,11 @@
 Name: Video2X Upscaler
 Author: K4YT3X
 Date Created: December 10, 2018
-Last Modified: August 21, 2019
+Last Modified: April 4, 2020
 
-Dev: SAT3LL
-
-Licensed under the GNU General Public License Version 3 (GNU GPL v3),
-    available at: https://www.gnu.org/licenses/gpl-3.0.txt
-
-(C) 2018-2019 K4YT3X
+Description: This file contains the Upscaler class. Each
+instance of the Upscaler class is an upscaler on an image or
+a folder.
 """
 
 # local imports
@@ -30,6 +27,7 @@ import copy
 import pathlib
 import re
 import shutil
+import sys
 import tempfile
 import threading
 import time
@@ -51,12 +49,12 @@ class Upscaler:
         ArgumentError -- if argument is not valid
     """
 
-    def __init__(self, input_video, output_video, method, waifu2x_settings, ffmpeg_settings):
+    def __init__(self, input_video, output_video, method, driver_settings, ffmpeg_settings):
         # mandatory arguments
         self.input_video = input_video
         self.output_video = output_video
         self.method = method
-        self.waifu2x_settings = waifu2x_settings
+        self.driver_settings = driver_settings
         self.ffmpeg_settings = ffmpeg_settings
 
         # optional arguments
@@ -65,7 +63,7 @@ class Upscaler:
         self.scale_height = None
         self.scale_ratio = None
         self.model_dir = None
-        self.threads = 5
+        self.processes = 1
         self.video2x_cache_directory = pathlib.Path(tempfile.gettempdir()) / 'video2x'
         self.image_format = 'png'
         self.preserve_frames = False
@@ -73,6 +71,12 @@ class Upscaler:
     def create_temp_directories(self):
         """create temporary directory
         """
+
+        # create a new temp directory if the current one is not found
+        if not self.video2x_cache_directory.exists():
+            self.video2x_cache_directory = pathlib.Path(tempfile.gettempdir()) / 'video2x'
+
+        # create temp directories for extracted frames and upscaled frames
         self.extracted_frames = pathlib.Path(tempfile.mkdtemp(dir=self.video2x_cache_directory))
         Avalon.debug_info(f'Extracted frames are being saved to: {self.extracted_frames}')
         self.upscaled_frames = pathlib.Path(tempfile.mkdtemp(dir=self.video2x_cache_directory))
@@ -82,7 +86,7 @@ class Upscaler:
         """delete temp directories when done
         """
         if not self.preserve_frames:
-            for directory in [self.extracted_frames, self.upscaled_frames]:
+            for directory in [self.extracted_frames, self.upscaled_frames, self.video2x_cache_directory]:
                 try:
                     # avalon framework cannot be used if python is shutting down
                     # therefore, plain print is used
@@ -116,7 +120,7 @@ class Upscaler:
         # get number of extracted frames
         self.total_frames = 0
         for directory in extracted_frames_directories:
-            self.total_frames += len([f for f in directory.iterdir() if str(f)[-4:] == f'.{self.image_format}'])
+            self.total_frames += len([f for f in directory.iterdir() if str(f).lower().endswith(self.image_format.lower())])
 
         with tqdm(total=self.total_frames, ascii=True, desc='Upscaling Progress') as progress_bar:
 
@@ -127,7 +131,7 @@ class Upscaler:
             while not self.progress_bar_exit_signal:
 
                 with contextlib.suppress(FileNotFoundError):
-                    self.total_frames_upscaled = len([f for f in self.upscaled_frames.iterdir() if str(f)[-4:] == f'.{self.image_format}'])
+                    self.total_frames_upscaled = len([f for f in self.upscaled_frames.iterdir() if str(f).lower().endswith(self.image_format.lower())])
                     delta = self.total_frames_upscaled - previous_cycle_frames
                     previous_cycle_frames = self.total_frames_upscaled
 
@@ -150,150 +154,136 @@ class Upscaler:
             w2 {Waifu2x Object} -- initialized waifu2x object
         """
 
-        # progress bar thread exit signal
+        # progress bar process exit signal
         self.progress_bar_exit_signal = False
 
-        # create a container for exceptions in threads
-        # if this thread is not empty, then an exception has occured
-        self.upscaler_exceptions = []
-
         # initialize waifu2x driver
-        drivers = AVAILABLE_DRIVERS
-        if self.waifu2x_driver not in drivers:
-            raise UnrecognizedDriverError(f'Unrecognized waifu2x driver: {self.waifu2x_driver}')
+        if self.waifu2x_driver not in AVAILABLE_DRIVERS:
+            raise UnrecognizedDriverError(f'Unrecognized driver: {self.waifu2x_driver}')
 
-        # it's easier to do multi-threading with waifu2x_converter
-        # the number of threads can be passed directly to waifu2x_converter
-        if self.waifu2x_driver == 'waifu2x_converter':
-            w2 = Waifu2xConverter(self.waifu2x_settings, self.model_dir)
+        # create a container for all upscaler processes
+        upscaler_processes = []
 
-            progress_bar = threading.Thread(target=self._progress_bar, args=([self.extracted_frames],))
-            progress_bar.start()
+        # list all images in the extracted frames
+        frames = [(self.extracted_frames / f) for f in self.extracted_frames.iterdir() if f.is_file]
 
-            w2.upscale(self.extracted_frames, self.upscaled_frames, self.scale_ratio, self.threads, self.image_format, self.upscaler_exceptions)
-            for image in [f for f in self.upscaled_frames.iterdir() if f.is_file()]:
-                renamed = re.sub(f'_\[.*-.*\]\[x(\d+(\.\d+)?)\]\.{self.image_format}', f'.{self.image_format}', str(image))
-                (self.upscaled_frames / image).rename(self.upscaled_frames / renamed)
+        # if we have less images than processes,
+        # create only the processes necessary
+        if len(frames) < self.processes:
+            self.processes = len(frames)
 
-            self.progress_bar_exit_signal = True
-            progress_bar.join()
-            return
+        # create a directory for each process and append directory
+        # name into a list
+        process_directories = []
+        for process_id in range(self.processes):
+            process_directory = self.extracted_frames / str(process_id)
+            process_directories.append(process_directory)
 
-        # drivers that are to be multi-threaded by video2x
+            # delete old directories and create new directories
+            if process_directory.is_dir():
+                shutil.rmtree(process_directory)
+            process_directory.mkdir(parents=True, exist_ok=True)
+
+        # waifu2x-converter-cpp will perform multi-threading within its own process
+        if self.waifu2x_driver in ['waifu2x_converter', 'anime4k'] :
+            process_directories = [self.extracted_frames]
+
         else:
-            # create a container for all upscaler threads
-            upscaler_threads = []
-
-            # list all images in the extracted frames
-            frames = [(self.extracted_frames / f) for f in self.extracted_frames.iterdir() if f.is_file]
-
-            # if we have less images than threads,
-            # create only the threads necessary
-            if len(frames) < self.threads:
-                self.threads = len(frames)
-
-            # create a directory for each thread and append directory
-            # name into a list
-
-            thread_pool = []
-            thread_directories = []
-            for thread_id in range(self.threads):
-                thread_directory = self.extracted_frames / str(thread_id)
-                thread_directories.append(thread_directory)
-
-                # delete old directories and create new directories
-                if thread_directory.is_dir():
-                    shutil.rmtree(thread_directory)
-                thread_directory.mkdir(parents=True, exist_ok=True)
-
-                # append directory path into list
-                thread_pool.append((thread_directory, thread_id))
-
             # evenly distribute images into each directory
             # until there is none left in the directory
             for image in frames:
                 # move image
-                image.rename(thread_pool[0][0] / image.name)
+                image.rename(process_directories[0] / image.name)
                 # rotate list
-                thread_pool = thread_pool[-1:] + thread_pool[:-1]
+                process_directories = process_directories[-1:] + process_directories[:-1]
 
-            # create threads and start them
-            for thread_info in thread_pool:
+        # create threads and start them
+        for process_directory in process_directories:
 
-                # create a separate w2 instance for each thread
-                if self.waifu2x_driver == 'waifu2x_caffe':
-                    w2 = Waifu2xCaffe(copy.deepcopy(self.waifu2x_settings), self.method, self.model_dir, self.bit_depth)
-                    if self.scale_ratio:
-                        thread = threading.Thread(target=w2.upscale,
-                                                  args=(thread_info[0],
-                                                        self.upscaled_frames,
-                                                        self.scale_ratio,
-                                                        False,
-                                                        False,
-                                                        self.image_format,
-                                                        self.upscaler_exceptions))
-                    else:
-                        thread = threading.Thread(target=w2.upscale,
-                                                  args=(thread_info[0],
-                                                        self.upscaled_frames,
-                                                        False,
-                                                        self.scale_width,
-                                                        self.scale_height,
-                                                        self.image_format,
-                                                        self.upscaler_exceptions))
+            # if the driver being used is waifu2x-caffe
+            if self.waifu2x_driver == 'waifu2x_caffe':
+                driver = Waifu2xCaffe(copy.deepcopy(self.driver_settings), self.method, self.model_dir, self.bit_depth)
+                if self.scale_ratio:
+                    upscaler_processes.append(driver.upscale(process_directory,
+                                                             self.upscaled_frames,
+                                                             self.scale_ratio,
+                                                             False,
+                                                             False,
+                                                             self.image_format))
+                else:
+                    upscaler_processes.append(driver.upscale(process_directory,
+                                                             self.upscaled_frames,
+                                                             False,
+                                                             self.scale_width,
+                                                             self.scale_height,
+                                                             self.image_format))
 
-                # if the driver being used is waifu2x_ncnn_vulkan
-                elif self.waifu2x_driver == 'waifu2x_ncnn_vulkan':
-                    w2 = Waifu2xNcnnVulkan(copy.deepcopy(self.waifu2x_settings))
-                    thread = threading.Thread(target=w2.upscale,
-                                              args=(thread_info[0],
-                                                    self.upscaled_frames,
-                                                    self.scale_ratio,
-                                                    self.upscaler_exceptions))
+            # if the driver being used is waifu2x-converter-cpp
+            elif self.waifu2x_driver == 'waifu2x_converter':
+                driver = Waifu2xConverter(self.driver_settings, self.model_dir)
+                upscaler_processes.append(driver.upscale(process_directory,
+                                                         self.upscaled_frames,
+                                                         self.scale_ratio,
+                                                         self.processes,
+                                                         self.image_format))
 
-                # if the driver being used is anime4k
-                elif self.waifu2x_driver == 'anime4k':
-                    w2 = Anime4k(copy.deepcopy(self.waifu2x_settings))
-                    thread = threading.Thread(target=w2.upscale,
-                                              args=(thread_info[0],
-                                                    self.upscaled_frames,
-                                                    self.scale_ratio,
-                                                    self.upscaler_exceptions))
+            # if the driver being used is waifu2x-ncnn-vulkan
+            elif self.waifu2x_driver == 'waifu2x_ncnn_vulkan':
+                driver = Waifu2xNcnnVulkan(copy.deepcopy(self.driver_settings))
+                upscaler_processes.append(driver.upscale(process_directory,
+                                                         self.upscaled_frames,
+                                                         self.scale_ratio))
 
-                # create thread
-                thread.name = thread_info[1]
+            # if the driver being used is anime4k
+            elif self.waifu2x_driver == 'anime4k':
+                driver = Anime4k(copy.deepcopy(self.driver_settings))
+                upscaler_processes += driver.upscale(process_directory,
+                                                     self.upscaled_frames,
+                                                     self.scale_ratio,
+                                                     self.processes)
 
-                # add threads into the pool
-                upscaler_threads.append(thread)
+        # start progress bar in a different thread
+        progress_bar = threading.Thread(target=self._progress_bar, args=(process_directories,))
+        progress_bar.start()
 
-            # start progress bar in a different thread
-            progress_bar = threading.Thread(target=self._progress_bar, args=(thread_directories,))
-            progress_bar.start()
+        # create the clearer and start it
+        Avalon.debug_info('Starting upscaled image cleaner')
+        image_cleaner = ImageCleaner(self.extracted_frames, self.upscaled_frames, len(upscaler_processes))
+        image_cleaner.start()
 
-            # create the clearer and start it
-            Avalon.debug_info('Starting upscaled image cleaner')
-            image_cleaner = ImageCleaner(self.extracted_frames, self.upscaled_frames, len(upscaler_threads))
-            image_cleaner.start()
+        # wait for all process to exit
+        try:
+            Avalon.debug_info('Main process waiting for subprocesses to exit')
+            for process in upscaler_processes:
+                Avalon.debug_info(f'Subprocess {process.pid} exited with code {process.wait()}')
+        except (KeyboardInterrupt, SystemExit):
+            Avalon.warning('Exit signal received')
+            Avalon.warning('Killing processes')
+            for process in upscaler_processes:
+                process.terminate()
 
-            # start all threads
-            for thread in upscaler_threads:
-                thread.start()
-
-            # wait for threads to finish
-            for thread in upscaler_threads:
-                thread.join()
-
-            # upscaling done, kill the clearer
+            # cleanup and exit with exit code 1
             Avalon.debug_info('Killing upscaled image cleaner')
             image_cleaner.stop()
-
             self.progress_bar_exit_signal = True
+            sys.exit(1)
 
-            if len(self.upscaler_exceptions) != 0:
-                raise(self.upscaler_exceptions[0])
+        # if the driver is waifu2x-converter-cpp
+        # images need to be renamed to be recognizable for FFmpeg
+        if self.waifu2x_driver == 'waifu2x_converter':
+            for image in [f for f in self.upscaled_frames.iterdir() if f.is_file()]:
+                renamed = re.sub(f'_\\[.*\\]\\[x(\\d+(\\.\\d+)?)\\]\\.{self.image_format}', f'.{self.image_format}', str(image.name))
+                (self.upscaled_frames / image).rename(self.upscaled_frames / renamed)
+
+        # upscaling done, kill the clearer
+        Avalon.debug_info('Killing upscaled image cleaner')
+        image_cleaner.stop()
+
+        # pass exit signal to progress bar thread
+        self.progress_bar_exit_signal = True
 
     def run(self):
-        """Main controller for Video2X
+        """ Main controller for Video2X
 
         This function controls the flow of video conversion
         and handles all necessary functions.
@@ -337,6 +327,7 @@ class Upscaler:
         # get a dict of all pixel formats and corresponding bit depth
         pixel_formats = fm.get_pixel_formats()
 
+        # try getting pixel format's corresponding bti depth
         try:
             self.bit_depth = pixel_formats[fm.pixel_format]
         except KeyError:

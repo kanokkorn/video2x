@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Name: Video2x GUI
+Creator: Video2X GUI
 Author: K4YT3X
 Date Created: July 27, 2019
-Last Modified: August 17, 2019
+Last Modified: December 11, 2019
 
-Description: GUI for Video2X
+Description: A simple GUI for Video2X made with tkinter.
 """
 
 # local imports
@@ -18,13 +18,17 @@ from tkinter import *
 from tkinter import messagebox
 from tkinter import ttk
 from tkinter.filedialog import *
-import json
+import contextlib
 import pathlib
+import sys
 import tempfile
 import threading
 import time
+import yaml
 
-VERSION = '1.1.1'
+VERSION = '1.1.3'
+
+VIDEO2X_CONFIG = pathlib.Path(sys.argv[0]).parent.absolute() / 'video2x.yaml'
 
 LEGAL_INFO = f'''Video2X GUI Version: {VERSION}
 Author: K4YT3X
@@ -47,6 +51,46 @@ AVAILABLE_DRIVERS = {
 }
 
 IMAGE_FORMATS = {'PNG', 'JPG'}
+
+DEMUXER_EXTENSIONS = {'3dostr', '4xm', 'aa', 'aac', 'ac3', 'acm', 'act',
+                      'adf', 'adp', 'ads', 'adx', 'aea', 'afc', 'aiff', 'aix', 'alaw',
+                      'alias_pix', 'alsa', 'amr', 'amrnb', 'amrwb', 'anm', 'apc', 'ape',
+                      'apng', 'aptx', 'aptx_hd', 'aqtitle', 'asf', 'asf_o', 'ass', 'ast',
+                      'au', 'avi', 'avisynth', 'avr', 'avs', 'avs2', 'bethsoftvid', 'bfi',
+                      'bfstm', 'bin', 'bink', 'bit', 'bmp_pipe', 'bmv', 'boa', 'brender_pix',
+                      'brstm', 'c93', 'caf', 'cavsvideo', 'cdg', 'cdxl', 'cine', 'codec2',
+                      'codec2raw', 'concat', 'dash', 'data', 'daud', 'dcstr', 'dds_pipe',
+                      'dfa', 'dirac', 'dnxhd', 'dpx_pipe', 'dsf', 'dsicin', 'dss', 'dts',
+                      'dtshd', 'dv', 'dvbsub', 'dvbtxt', 'dxa', 'ea', 'ea_cdata', 'eac3',
+                      'epaf', 'exr_pipe', 'f32be', 'f32le', 'f64be', 'f64le', 'fbdev',
+                      'ffmetadata', 'film_cpk', 'filmstrip', 'fits', 'flac', 'flic', 'flv',
+                      'frm', 'fsb', 'g722', 'g723_1', 'g726', 'g726le', 'g729', 'gdv', 'genh',
+                      'gif', 'gsm', 'gxf', 'h261', 'h263', 'h264', 'hevc', 'hls', 'applehttp',
+                      'hnm', 'ico', 'idcin', 'idf', 'iec61883', 'iff', 'ilbc', 'image2',
+                      'image2pipe', 'ingenient', 'ipmovie', 'ircam', 'iss', 'iv8', 'ivf',
+                      'ivr', 'j2k_pipe', 'jack', 'jacosub', 'jpeg_pipe', 'jpegls_pipe',
+                      'jv', 'kmsgrab', 'lavfi', 'libcdio', 'libdc1394', 'libgme', 'libopenmpt',
+                      'live_flv', 'lmlm4', 'loas', 'lrc', 'lvf', 'lxf', 'm4v', 'matroska', 'webm',
+                      'mgsts', 'microdvd', 'mjpeg', 'mjpeg_2000', 'mlp', 'mlv', 'mm', 'mmf',
+                      'mov', 'mp4', 'm4a', '3gp', '3g2', 'mj2', 'mp3', 'mpc', 'mpc8', 'mpeg',
+                      'mpegts', 'mpegtsraw', 'mpegvideo', 'mpjpeg', 'mpl2', 'mpsub', 'msf',
+                      'msnwctcp', 'mtaf', 'mtv', 'mulaw', 'musx', 'mv', 'mvi', 'mxf', 'mxg',
+                      'nc', 'nistsphere', 'nsp', 'nsv', 'nut', 'nuv', 'ogg', 'oma', 'openal',
+                      'oss', 'paf', 'pam_pipe', 'pbm_pipe', 'pcx_pipe', 'pgm_pipe', 'pgmyuv_pipe',
+                      'pictor_pipe', 'pjs', 'pmp', 'png_pipe', 'ppm_pipe', 'psd_pipe', 'psxstr',
+                      'pulse', 'pva', 'pvf', 'qcp', 'qdraw_pipe', 'r3d', 'rawvideo', 'realtext',
+                      'redspark', 'rl2', 'rm', 'roq', 'rpl', 'rsd', 'rso', 'rtp', 'rtsp',
+                      's16be', 's16le', 's24be', 's24le', 's32be', 's32le', 's337m', 's8',
+                      'sami', 'sap', 'sbc', 'sbg', 'scc', 'sdp', 'sdr2', 'sds', 'sdx', 'ser',
+                      'sgi_pipe', 'shn', 'siff', 'sln', 'smjpeg', 'smk', 'smush', 'sndio',
+                      'sol', 'sox', 'spdif', 'srt', 'stl', 'subviewer', 'subviewer1', 'sunrast_pipe',
+                      'sup', 'svag', 'svg_pipe', 'swf', 'tak', 'tedcaptions', 'thp', 'tiertexseq',
+                      'tiff_pipe', 'tmv', 'truehd', 'tta', 'tty', 'txd', 'ty', 'u16be', 'u16le',
+                      'u24be', 'u24le', 'u32be', 'u32le', 'u8', 'v210', 'v210x', 'vag', 'vc1',
+                      'vc1test', 'vidc', 'video4linux2', 'v4l2', 'vivo', 'vmd', 'vobsub', 'voc',
+                      'vpk', 'vplayer', 'vqf', 'w64', 'wav', 'wc3movie', 'webm_dash_manifest',
+                      'webp_pipe', 'webvtt', 'wsaud', 'wsd', 'wsvqa', 'wtv', 'wv', 'wve', 'x11grab',
+                      'xa', 'xbin', 'xmv', 'xpm_pipe', 'xvag', 'xwd_pipe', 'xwma', 'yop', 'yuv4mpegpipe'}
 
 
 class Video2xGui():
@@ -161,7 +205,7 @@ class Video2xGui():
 
         # preserve frames
         self.preserve_frames = BooleanVar(self.options_left)
-        self.preserve_frames.set(True)
+        self.preserve_frames.set(False)
         Label(self.options_right, text='Preserve Frames', relief=RIDGE, width=15).grid(row=3, column=0, padx=2, pady=3)
         preserve_frames_menu = OptionMenu(self.options_right, self.preserve_frames, *{True, False})
         preserve_frames_menu.grid(row=3, column=1, padx=2, pady=3, sticky=W)
@@ -224,108 +268,104 @@ class Video2xGui():
 
     def _upscale(self):
 
-        # start timer
-        begin_time = time.time()
+        try:
+            # start timer
+            begin_time = time.time()
 
-        # read configuration file
-        config = read_config('video2x.json')
-        config = absolutify_paths(config)
+            # read configuration file
+            config = read_config(VIDEO2X_CONFIG)
+            config = absolutify_paths(config)
 
-        input_file = pathlib.Path(self.input_file.get())
-        output_file = pathlib.Path(self.output_file.get())
-        driver = AVAILABLE_DRIVERS[self.driver.get()]
+            input_file = pathlib.Path(self.input_file.get())
+            output_file = pathlib.Path(self.output_file.get())
+            driver = AVAILABLE_DRIVERS[self.driver.get()]
 
-        if driver == 'waifu2x_caffe':
-            waifu2x_settings = config['waifu2x_caffe']
-            if not pathlib.Path(waifu2x_settings['waifu2x_caffe_path']).is_file():
-                messagebox.showerror('Error', 'Specified waifu2x-caffe directory doesn\'t exist\nPlease check the configuration file settings')
-                raise FileNotFoundError(waifu2x_settings['waifu2x_caffe_path'])
-        elif driver == 'waifu2x_converter':
-            waifu2x_settings = config['waifu2x_converter']
-            if not pathlib.Path(waifu2x_settings['waifu2x_converter_path']).is_dir():
-                messagebox.showerror('Error', 'Specified waifu2x-converter-cpp directory doesn\'t exist\nPlease check the configuration file settings')
-                raise FileNotFoundError(waifu2x_settings['waifu2x_converter_path'])
-        elif driver == 'waifu2x_ncnn_vulkan':
-            waifu2x_settings = config['waifu2x_ncnn_vulkan']
-            if not pathlib.Path(waifu2x_settings['waifu2x_ncnn_vulkan_path']).is_file():
-                messagebox.showerror('Error', 'Specified waifu2x_ncnn_vulkan directory doesn\'t exist\nPlease check the configuration file settings')
-                raise FileNotFoundError(waifu2x_settings['waifu2x_ncnn_vulkan_path'])
-        elif driver == 'anime4k':
-            waifu2x_settings = config['anime4k']
-            if not pathlib.Path(waifu2x_settings['anime4k_path']).is_file():
-                messagebox.showerror('Error', 'Specified Anime4K directory doesn\'t exist\nPlease check the configuration file settings')
-                raise FileNotFoundError(waifu2x_settings['anime4k_path'])
+            # load specified driver's config into driver_settings
+            driver_settings = config[driver]
 
-        # read FFmpeg configuration
-        ffmpeg_settings = config['ffmpeg']
+            # if executable doesn't exist, show warning
+            if not pathlib.Path(driver_settings['path']).is_file() and not pathlib.Path(f'{driver_settings["path"]}.exe').is_file():
+                messagebox.showerror('Error', 'Specified driver directory doesn\'t exist\nPlease check the configuration file settings')
+                raise FileNotFoundError(driver_settings['path'])
 
-        # load video2x settings
-        image_format = config['video2x']['image_format'].lower()
-        preserve_frames = config['video2x']['preserve_frames']
+            # read FFmpeg configuration
+            ffmpeg_settings = config['ffmpeg']
 
-        # load cache directory
-        if isinstance(config['video2x']['video2x_cache_directory'], str):
-            video2x_cache_directory = pathlib.Path(config['video2x']['video2x_cache_directory'])
-        else:
-            video2x_cache_directory = pathlib.Path(tempfile.gettempdir()) / 'video2x'
+            # load video2x settings
+            image_format = config['video2x']['image_format'].lower()
+            preserve_frames = config['video2x']['preserve_frames']
 
-        if video2x_cache_directory.exists() and not video2x_cache_directory.is_dir():
-            messagebox.showerror('Error', 'Specified cache directory is a file/link')
-            raise FileExistsError('Specified cache directory is a file/link')
-
-        elif not video2x_cache_directory.exists():
-            # try creating the cache directory
-            if messagebox.askyesno('Question', f'Specified cache directory {video2x_cache_directory} does not exist\nCreate directory?'):
-                try:
-                    video2x_cache_directory.mkdir(parents=True, exist_ok=True)
-
-                # there can be a number of exceptions here
-                # PermissionError, FileExistsError, etc.
-                # therefore, we put a catch-them-all here
-                except Exception as e:
-                    messagebox.showerror('Error', f'Unable to create {video2x_cache_directory}\nAborting...')
-                    raise e
+            # load cache directory
+            if isinstance(config['video2x']['video2x_cache_directory'], str):
+                video2x_cache_directory = pathlib.Path(config['video2x']['video2x_cache_directory'])
             else:
-                raise FileNotFoundError('Could not create cache directory')
+                video2x_cache_directory = pathlib.Path(tempfile.gettempdir()) / 'video2x'
 
-        # load more settings from gui
-        width = self.width.get()
-        height = self.height.get()
-        scale_ratio = self.scale_ratio.get()
-        image_format = self.image_format.get()
-        threads = self.threads.get()
-        method = AVAILABLE_METHODS[self.method.get()]
-        preserve_frames = self.preserve_frames.get()
+            if video2x_cache_directory.exists() and not video2x_cache_directory.is_dir():
+                messagebox.showerror('Error', 'Specified cache directory is a file/link')
+                raise FileExistsError('Specified cache directory is a file/link')
 
-        self.upscaler = Upscaler(input_video=input_file, output_video=output_file, method=method, waifu2x_settings=waifu2x_settings, ffmpeg_settings=ffmpeg_settings)
+            elif not video2x_cache_directory.exists():
+                # try creating the cache directory
+                if messagebox.askyesno('Question', f'Specified cache directory {video2x_cache_directory} does not exist\nCreate directory?'):
+                    try:
+                        video2x_cache_directory.mkdir(parents=True, exist_ok=True)
 
-        # set optional options
-        self.upscaler.waifu2x_driver = driver
-        self.upscaler.scale_width = width
-        self.upscaler.scale_height = height
-        self.upscaler.scale_ratio = scale_ratio
-        self.upscaler.model_dir = None
-        self.upscaler.threads = threads
-        self.upscaler.video2x_cache_directory = video2x_cache_directory
-        self.upscaler.image_format = image_format
-        self.upscaler.preserve_frames = preserve_frames
+                    # there can be a number of exceptions here
+                    # PermissionError, FileExistsError, etc.
+                    # therefore, we put a catch-them-all here
+                    except Exception as e:
+                        messagebox.showerror('Error', f'Unable to create {video2x_cache_directory}\nAborting...')
+                        raise e
+                else:
+                    raise FileNotFoundError('Could not create cache directory')
 
-        # run upscaler
-        self.upscaler.create_temp_directories()
+            # load more settings from gui
+            width = self.width.get()
+            height = self.height.get()
+            scale_ratio = self.scale_ratio.get()
+            image_format = self.image_format.get()
+            threads = self.threads.get()
+            method = AVAILABLE_METHODS[self.method.get()]
+            preserve_frames = self.preserve_frames.get()
 
-        # start progress bar
-        progress_bar = threading.Thread(target=self._progress_bar)
-        progress_bar.start()
+            self.upscaler = Upscaler(input_video=input_file, output_video=output_file, method=method, driver_settings=driver_settings, ffmpeg_settings=ffmpeg_settings)
 
-        # start upscaling
-        self.upscaler.run()
-        self.upscaler.cleanup_temp_directories()
+            # set optional options
+            self.upscaler.waifu2x_driver = driver
+            self.upscaler.scale_width = width
+            self.upscaler.scale_height = height
+            self.upscaler.scale_ratio = scale_ratio
+            self.upscaler.model_dir = None
+            self.upscaler.threads = threads
+            self.upscaler.video2x_cache_directory = video2x_cache_directory
+            self.upscaler.image_format = image_format
+            self.upscaler.preserve_frames = preserve_frames
 
-        # show message when upscaling completes
-        messagebox.showinfo('Info', f'Upscaling Completed\nTime Taken: {round((time.time() - begin_time), 5)} seconds')
-        self.progress_bar['value'] = 100
-        self.running = False
-        self.start_button_text.set('Start')
+            # run upscaler
+            self.upscaler.create_temp_directories()
+
+            # start progress bar
+            progress_bar = threading.Thread(target=self._progress_bar)
+            progress_bar.start()
+
+            # start upscaling
+            self.upscaler.run()
+            self.upscaler.cleanup_temp_directories()
+
+            # show message when upscaling completes
+            messagebox.showinfo('Info', f'Upscaling Completed\nTime Taken: {round((time.time() - begin_time), 5)} seconds')
+            self.progress_bar['value'] = 100
+            self.running = False
+            self.start_button_text.set('Start')
+        
+        except Exception as e:
+            messagebox.showerror('Error', f'Upscaler ran into an error:\n{e}')
+
+            # try cleaning up temp directories
+            with contextlib.suppress(Exception):
+                self.upscaler.cleanup_temp_directories()
+
 
     def _progress_bar(self):
         """ This method prints a progress bar
@@ -350,12 +390,18 @@ class Video2xGui():
     def _select_input(self):
         self.input_file.set(askopenfilename(title='Select Input File'))
 
+        # remove input file extension
+        input_filename = str(self.input_file.get())
+        for extension in DEMUXER_EXTENSIONS:
+            if input_filename.endswith(f'.{extension}'):
+                input_filename = input_filename[:-1 - len(extension)]
+
         # try to set an output file name automatically
-        output_file = pathlib.Path(f'{self.input_file.get()}_output.mp4')
+        output_file = pathlib.Path(f'{input_filename}_output.mp4')
 
         output_file_id = 0
         while output_file.is_file() and output_file_id <= 10:
-            output_file = pathlib.Path(f'{self.input_file.get()}_output_{output_file_id}.mp4')
+            output_file = pathlib.Path(f'{input_filename}_output_{output_file_id}.mp4')
             output_file_id += 1
         
         if not output_file.exists():
@@ -368,10 +414,10 @@ class Video2xGui():
 def read_config(config_file):
     """ Reads configuration file
 
-    Returns a dictionary read by JSON.
+    Returns a dictionary read by parsing Video2X config.
     """
     with open(config_file, 'r') as raw_config:
-        config = json.load(raw_config)
+        config = yaml.load(raw_config, Loader=yaml.FullLoader)
         return config
 
 
@@ -390,16 +436,16 @@ def absolutify_paths(config):
     current_directory = pathlib.Path(sys.argv[0]).parent.absolute()
 
     # check waifu2x-caffe path
-    if not re.match('^[a-z]:', config['waifu2x_caffe']['waifu2x_caffe_path'], re.IGNORECASE):
-        config['waifu2x_caffe']['waifu2x_caffe_path'] = current_directory / config['waifu2x_caffe']['waifu2x_caffe_path']
+    if not re.match('^[a-z]:', config['waifu2x_caffe']['path'], re.IGNORECASE):
+        config['waifu2x_caffe']['path'] = current_directory / config['waifu2x_caffe']['path']
 
     # check waifu2x-converter-cpp path
-    if not re.match('^[a-z]:', config['waifu2x_converter']['waifu2x_converter_path'], re.IGNORECASE):
-        config['waifu2x_converter']['waifu2x_converter_path'] = current_directory / config['waifu2x_converter']['waifu2x_converter_path']
+    if not re.match('^[a-z]:', config['waifu2x_converter']['path'], re.IGNORECASE):
+        config['waifu2x_converter']['path'] = current_directory / config['waifu2x_converter']['path']
 
     # check waifu2x_ncnn_vulkan path
-    if not re.match('^[a-z]:', config['waifu2x_ncnn_vulkan']['waifu2x_ncnn_vulkan_path'], re.IGNORECASE):
-        config['waifu2x_ncnn_vulkan']['waifu2x_ncnn_vulkan_path'] = current_directory / config['waifu2x_ncnn_vulkan']['waifu2x_ncnn_vulkan_path']
+    if not re.match('^[a-z]:', config['waifu2x_ncnn_vulkan']['path'], re.IGNORECASE):
+        config['waifu2x_ncnn_vulkan']['path'] = current_directory / config['waifu2x_ncnn_vulkan']['path']
 
     # check ffmpeg path
     if not re.match('^[a-z]:', config['ffmpeg']['ffmpeg_path'], re.IGNORECASE):
